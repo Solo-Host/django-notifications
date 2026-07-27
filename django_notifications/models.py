@@ -88,9 +88,9 @@ class NotificationDispatch(UUIDTimestampedModel):
         db_table = "notifications_notification_dispatch"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["status"], name="notifications_dispatch_status_idx"),
-            models.Index(fields=["recipient_mode"], name="notifications_dispatch_mode_idx"),
-            models.Index(fields=["-created_at"], name="notifications_dispatch_created_idx"),
+            models.Index(fields=["status"], name="notif_dispatch_status_idx"),
+            models.Index(fields=["recipient_mode"], name="notif_dispatch_mode_idx"),
+            models.Index(fields=["-created_at"], name="notif_dispatch_created_idx"),
         ]
 
     def __str__(self) -> str:
@@ -138,10 +138,7 @@ class UserNotification(UUIDTimestampedModel):
             models.Index(fields=["user", "-created_at"], name="notifications_user_created_idx"),
             models.Index(fields=["user", "is_read"], name="notifications_user_read_idx"),
             models.Index(fields=["user", "notification_type"], name="notifications_user_type_idx"),
-            models.Index(
-                fields=["source_dispatch"],
-                name="notifications_user_dispatch_idx",
-            ),
+            models.Index(fields=["source_dispatch"], name="notif_user_dispatch_idx"),
         ]
 
     def __str__(self) -> str:
@@ -162,4 +159,3 @@ class UserNotification(UUIDTimestampedModel):
     @property
     def metadata_dict(self) -> dict[str, Any]:
         return self.metadata if isinstance(self.metadata, dict) else {}
-

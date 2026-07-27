@@ -111,15 +111,15 @@ class Migration(migrations.Migration):
                 "indexes": [
                     models.Index(
                         fields=["status"],
-                        name="notifications_dispatch_status_idx",
+                        name="notif_dispatch_status_idx",
                     ),
                     models.Index(
                         fields=["recipient_mode"],
-                        name="notifications_dispatch_mode_idx",
+                        name="notif_dispatch_mode_idx",
                     ),
                     models.Index(
                         fields=["-created_at"],
-                        name="notifications_dispatch_created_idx",
+                        name="notif_dispatch_created_idx",
                     ),
                 ],
             },
@@ -203,7 +203,7 @@ class Migration(migrations.Migration):
                     ),
                     models.Index(
                         fields=["source_dispatch"],
-                        name="notifications_user_dispatch_idx",
+                        name="notif_user_dispatch_idx",
                     ),
                 ],
             },
