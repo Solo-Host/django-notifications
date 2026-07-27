@@ -7,6 +7,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -119,7 +120,8 @@ def queue_notification_dispatch(dispatch: NotificationDispatch) -> NotificationD
     )
     from django_notifications.tasks import deliver_notification_dispatch
 
-    deliver_notification_dispatch.delay(str(dispatch.pk))
+    dispatch_id = str(dispatch.pk)
+    transaction.on_commit(lambda: deliver_notification_dispatch.delay(dispatch_id))
     return dispatch
 
 
