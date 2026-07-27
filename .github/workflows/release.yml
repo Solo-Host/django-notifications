@@ -59,8 +59,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          CURRENT="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
-          PACKAGE_CURRENT="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' django_notifications/__init__.py)"
+          CURRENT=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          PACKAGE_CURRENT=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' django_notifications/__init__.py)
           LOCK_CURRENT="$(python3 - <<'PY'
           from pathlib import Path
           import re
