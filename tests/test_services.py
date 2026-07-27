@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.test import override_settings
 from django.utils import timezone
 
@@ -37,7 +38,7 @@ def test_get_notification_settings_merges_provider_overrides() -> None:
     ]
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_queue_notification_dispatch_updates_status_and_enqueues_task() -> None:
     user = User.objects.create_user(username="selected-user", email="selected@example.com")
     dispatch = NotificationDispatch.objects.create(
@@ -55,6 +56,25 @@ def test_queue_notification_dispatch_updates_status_and_enqueues_task() -> None:
     assert dispatch.status == NotificationDispatch.Status.QUEUED
     assert dispatch.queued_at is not None
     delay_mock.assert_called_once_with(str(dispatch.pk))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_queue_notification_dispatch_waits_for_transaction_commit() -> None:
+    user = User.objects.create_user(username="committed-user", email="committed@example.com")
+    dispatch = NotificationDispatch.objects.create(
+        title="Committed maintenance",
+        notification_type=UserNotification.Type.INFO,
+        message="The service will restart after commit.",
+        recipient_mode=NotificationDispatch.RecipientMode.SELECTED_USERS,
+    )
+    dispatch.selected_users.add(user)
+
+    with patch("django_notifications.tasks.deliver_notification_dispatch.delay") as delay_mock:
+        with transaction.atomic():
+            queue_notification_dispatch(dispatch)
+            delay_mock.assert_not_called()
+
+        delay_mock.assert_called_once_with(str(dispatch.pk))
 
 
 @pytest.mark.django_db
@@ -133,4 +153,3 @@ def test_cleanup_and_notification_queries_ignore_expired_rows() -> None:
     assert deleted_count == 1
     assert UserNotification.objects.filter(id=expired.id).exists() is False
     assert UserNotification.objects.filter(id=active_unread.id).exists() is True
-
