@@ -1,5 +1,12 @@
 name: Release
 
+# Manual release entrypoint for package releases.
+#
+# Required secrets:
+#   - RELEASE_APP_PRIVATE_KEY    GitHub App private key for opening release PRs.
+# Required variables:
+#   - RELEASE_APP_ID             GitHub App ID for opening release PRs.
+
 on:
   workflow_dispatch:
     inputs:
@@ -52,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CURRENT="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)"
+          CURRENT=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
           PACKAGE_CURRENT=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' django_notifications/__init__.py)
           LOCK_CURRENT="$(python3 - <<'PY'
           from pathlib import Path
@@ -60,7 +67,7 @@ jobs:
 
           text = Path("uv.lock").read_text()
           match = re.search(
-              r'\\[\\[package\\]\\]\\nname = \"django-notifications\"\\nversion = \"([^\"]+)\"\\nsource = \\{ editable = \"\\.\" \\}',
+              r'\[\[package\]\]\nname = "django-notifications"\nversion = "([^"]+)"\nsource = \{ editable = "\." \}',
               text,
           )
           print(match.group(1) if match else "")
@@ -79,7 +86,7 @@ jobs:
             exit 1
           fi
           if [ "${CURRENT}" != "${PACKAGE_CURRENT}" ] || [ "${CURRENT}" != "${LOCK_CURRENT}" ]; then
-            echo "::error::Version drift detected: pyproject.toml=${CURRENT}, django_notifications/__init__.py=${PACKAGE_CURRENT}, uv.lock=${LOCK_CURRENT}"
+            echo "::error::Version drift detected on main: pyproject.toml=${CURRENT}, django_notifications/__init__.py=${PACKAGE_CURRENT}, uv.lock=${LOCK_CURRENT}"
             exit 1
           fi
 
@@ -115,6 +122,8 @@ jobs:
 
             VERSION="${MAJOR}.${MINOR}.${PATCH}"
           fi
+
+          echo "Resolved package release PR version '${VERSION}' from main (pyproject=${CURRENT}${LATEST_TAG:+, latest_tag=${LATEST_TAG}})"
 
           {
             echo "version=${VERSION}"
@@ -182,16 +191,40 @@ jobs:
           path = Path("uv.lock")
           text = path.read_text()
           updated, count = re.subn(
-              r'(\\[\\[package\\]\\]\\nname = \"django-notifications\"\\nversion = )\"[^\"]+\"(\\nsource = \\{ editable = \"\\.\" \\})',
-              lambda match: f'{match.group(1)}\"{version}\"{match.group(2)}',
+              r'(\[\[package\]\]\nname = "django-notifications"\nversion = )"[^"]+"(\nsource = \{ editable = "\." \})',
+              lambda match: f'{match.group(1)}"{version}"{match.group(2)}',
               text,
               count=1,
           )
           if count != 1:
-            print("::error::Could not update django-notifications version in uv.lock")
-            sys.exit(1)
+              print("::error::Could not update django-notifications version in uv.lock")
+              sys.exit(1)
           path.write_text(updated)
           PY
+
+          LOCK_CURRENT="$(python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("uv.lock").read_text()
+          match = re.search(
+              r'\[\[package\]\]\nname = "django-notifications"\nversion = "([^"]+)"\nsource = \{ editable = "\." \}',
+              text,
+          )
+          print(match.group(1) if match else "")
+          PY
+          )"
+          if [ "${LOCK_CURRENT}" != "${VERSION}" ]; then
+            echo "::error::uv.lock version ${LOCK_CURRENT} does not match release branch version ${VERSION}"
+            exit 1
+          fi
+
+          PACKAGE_CURRENT="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' django_notifications/__init__.py)"
+          if [ "${PACKAGE_CURRENT}" != "${VERSION}" ]; then
+            echo "::error::django_notifications/__init__.py version ${PACKAGE_CURRENT} does not match release branch version ${VERSION}"
+            exit 1
+          fi
+
           git add pyproject.toml django_notifications/__init__.py uv.lock
 
           if git diff --cached --quiet; then
@@ -212,12 +245,24 @@ jobs:
 
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="${{ steps.version.outputs.branch }}"
+          PR_BODY=$(cat <<EOF
+          ## Release v${VERSION}
+
+          This PR was created by the release workflow.
+
+          ### On merge
+          - release.yml will create or reuse tag \`v${VERSION}\`
+          - release.yml will build the sdist and wheel artifacts
+          - release.yml will create or update the GitHub Release
+          EOF
+          )
+
           PR_URL="$(gh pr create \
             --repo "${{ github.repository }}" \
             --base main \
             --head "${BRANCH}" \
             --title "release: v${VERSION}" \
-            --body "Release v${VERSION}" | tail -n1)"
+            --body "${PR_BODY}" | tail -n1)"
 
           echo "number=${PR_URL##*/}" >> "$GITHUB_OUTPUT"
 
@@ -226,11 +271,40 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.state.outputs.existing_pr_number || steps.pr.outputs.number }}
         run: |
-          gh pr merge "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --squash \
-            --auto \
-            --delete-branch
+          set -euo pipefail
+
+          ATTEMPTS=4
+          SLEEP_SECONDS=10
+
+          for attempt in $(seq 1 "${ATTEMPTS}"); do
+            set +e
+            OUTPUT="$(gh pr merge "${PR_NUMBER}" \
+              --repo "${{ github.repository }}" \
+              --squash \
+              --auto \
+              --delete-branch 2>&1)"
+            STATUS=$?
+            set -e
+
+            if [ "${STATUS}" -eq 0 ]; then
+              echo "::notice::Enabled auto-merge and branch deletion for release PR #${PR_NUMBER}"
+              exit 0
+            fi
+
+            if printf '%s' "${OUTPUT}" | grep -q 'Pull request is in clean status' && [ "${attempt}" -lt "${ATTEMPTS}" ]; then
+              echo "Attempt ${attempt}/${ATTEMPTS}: release PR #${PR_NUMBER} is still reporting clean status before checks register; retrying in ${SLEEP_SECONDS}s..."
+              sleep "${SLEEP_SECONDS}"
+              continue
+            fi
+
+            if printf '%s' "${OUTPUT}" | grep -q 'Pull request is in clean status'; then
+              echo "::warning::Release PR #${PR_NUMBER} was created successfully, but auto-merge could not be enabled before checks registered"
+              exit 0
+            fi
+
+            printf '%s\n' "${OUTPUT}"
+            exit "${STATUS}"
+          done
 
   release-metadata:
     if: >
@@ -245,6 +319,8 @@ jobs:
       - name: Extract version from branch name
         id: version
         run: |
+          set -euo pipefail
+
           BRANCH="${{ github.event.pull_request.head.ref }}"
           VERSION="${BRANCH#release-bump/v}"
 
@@ -305,6 +381,8 @@ jobs:
               echo "::error::Tag ${TAG} already exists but points to ${TAG_SHA} instead of ${HEAD_SHA}"
               exit 1
             fi
+
+            echo "::notice::Tag ${TAG} already exists on the target commit"
           else
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "${TAG}"
@@ -315,6 +393,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-metadata.outputs.tag }}
         run: |
+          set -euo pipefail
+
           if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist/* \
               --repo "${{ github.repository }}" \
