@@ -24,21 +24,21 @@ classifiers = [
 dependencies = [
     "Django>=5.1,<6",
     "celery>=5.6.3,<6",
-    "djangorestframework>=3.15",
+    "djangorestframework>=3.18.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "bandit>=1.8",
-    "build>=1.2",
+    "build>=1.6.1",
     "django-stubs",
     "djangorestframework-stubs",
-    "mypy>=1.11",
+    "mypy>=2.4.0",
     "pip-audit>=2.9",
     "pytest>=8.0",
-    "pytest-django>=4.8",
-    "ruff>=0.6",
-    "tox>=4.28",
+    "pytest-django>=4.14.0",
+    "ruff>=0.17.2",
+    "tox>=4.67.1",
     "tox-uv",
 ]
 
