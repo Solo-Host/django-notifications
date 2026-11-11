@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "Django>=5.1,<6",
-    "celery>=5.6.3,<6",
+    "celery>=5.7.0,<6",
     "djangorestframework>=3.18.3",
 ]
 
@@ -37,8 +37,8 @@ dev = [
     "pip-audit>=2.9",
     "pytest>=9.2.0",
     "pytest-django>=4.14.0",
-    "ruff>=0.17.3",
-    "tox>=4.67.4",
+    "ruff>=0.17.4",
+    "tox>=4.67.13",
     "tox-uv",
 ]
 
