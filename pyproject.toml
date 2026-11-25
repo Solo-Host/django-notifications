@@ -37,8 +37,8 @@ dev = [
     "pip-audit>=2.9",
     "pytest>=9.2.0",
     "pytest-django>=4.14.0",
-    "ruff>=0.17.5",
-    "tox>=4.67.13",
+    "ruff>=0.17.6",
+    "tox>=4.67.15",
     "tox-uv",
 ]
 
